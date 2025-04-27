@@ -359,6 +359,7 @@ else:
     print('---------------------------------------')   
     print('Test 1 set')
     print('Inference time: ', duration)
+    print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))
     
@@ -440,6 +441,7 @@ else:
     print('---------------------------------------')   
     print('Test 2 set')
     print('Inference time: ', duration)
+    print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))
     

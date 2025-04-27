@@ -332,6 +332,7 @@ else:
     end_time = time.time()
     duration = (end_time - start_time)/len(test_dataloader)
     print('Inference time: ', duration)
+    print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))
     
