@@ -16,6 +16,7 @@ from datasets import VIGORDataset
 from losses import infoNCELoss, cross_entropy_loss, orientation_loss
 from models import CVM_VIGOR as CVM
 from models import CVM_VIGOR_ori_prior as CVM_with_ori_prior
+import time
 
 torch.manual_seed(17)
 np.random.seed(0)
@@ -27,12 +28,12 @@ parser.add_argument('--area', type=str, help='samearea or crossarea', default='s
 parser.add_argument('--training', choices=('True','False'), default='True')
 parser.add_argument('--pos_only', choices=('True','False'), default='True')
 parser.add_argument('-l', '--learning_rate', type=float, help='learning rate', default=1e-4)
-parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=8)
+parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=1)
 parser.add_argument('--weight_ori', type=float, help='weight on orientation loss', default=1e1)
 parser.add_argument('--weight_infoNCE', type=float, help='weight on infoNCE loss', default=1e4)
 parser.add_argument('-f', '--FoV', type=int, help='field of view', default=360)
 parser.add_argument('--ori_noise', type=float, help='noise in orientation prior, 180 means unknown orientation', default=180.)
-dataset_root='/home/zxia/datasets/VIGOR'
+dataset_root='/ws/data/VIGOR'
 
 args = vars(parser.parse_args())
 area = args['area']
@@ -246,7 +247,7 @@ if training:
 else:
     torch.cuda.empty_cache()
     CVM_model = CVM_with_ori_prior(device, ori_noise, circular_padding)
-    test_model_path = 'models/VIGOR/samearea/model.pt'
+    test_model_path = '/ws/external/checkpoints/models/VIGOR/samearea/model.pt'
     print('load model from: ' + test_model_path)
 
     CVM_model.load_state_dict(torch.load(test_model_path))
@@ -262,8 +263,10 @@ else:
     probability = []
     probability_at_gt = []
 
+    start_time = time.time()
     for i, data in enumerate(test_dataloader, 0):
-        print(i)
+        if i % 1000 == 0:
+            print(i)
         grd, sat, gt, gt_with_ori, gt_orientation, city, orientation_angle = data
         grd = grd.to(device)
         sat = sat.to(device)
@@ -325,7 +328,10 @@ else:
 
                 probability_at_gt.append(heatmap[batch_idx, 0, loc_gt[1], loc_gt[2]])
 
-
+    # check inference time
+    end_time = time.time()
+    duration = (end_time - start_time)/len(test_dataloader)
+    print('Inference time: ', duration)
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))
     

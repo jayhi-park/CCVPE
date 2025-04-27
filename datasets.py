@@ -16,7 +16,7 @@ np.random.seed(0)
 # VIGOR
 
 class VIGORDataset(Dataset):
-    def __init__(self, root, label_root = 'splits_new', split='samearea', train=True, transform=None, pos_only=True, ori_noise=180, random_orientation=None):
+    def __init__(self, root, label_root = 'splits_corrected', split='samearea', train=True, transform=None, pos_only=True, ori_noise=180, random_orientation=None):
         self.root = root
         self.label_root = label_root
         self.split = split
@@ -46,7 +46,7 @@ class VIGORDataset(Dataset):
             sat_list_fname = os.path.join(self.root, label_root, city, 'satellite_list.txt')
             with open(sat_list_fname, 'r') as file:
                 for line in file.readlines():
-                    self.sat_list.append(os.path.join(self.root, city, 'satellite', line.replace('\n', '')))
+                    self.sat_list.append(os.path.join(self.root, 'satellite', city, line.replace('\n', '')))
                     self.sat_index_dict[line.replace('\n', '')] = idx
                     idx += 1
             print('InputData::__init__: load', sat_list_fname, idx)
@@ -78,7 +78,7 @@ class VIGORDataset(Dataset):
                         label.append(self.sat_index_dict[data[i]])
                     label = np.array(label).astype(int)
                     delta = np.array([data[2:4], data[5:7], data[8:10], data[11:13]]).astype(float)
-                    self.grd_list.append(os.path.join(self.root, city, 'panorama', data[0]))
+                    self.grd_list.append(os.path.join(self.root, 'ground', city, 'panorama', data[0]))
                     self.label.append(label)
                     self.delta.append(delta)
                     if not label[0] in self.sat_cover_dict:

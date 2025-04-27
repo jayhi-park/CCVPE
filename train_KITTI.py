@@ -16,6 +16,8 @@ from datasets import SatGrdDataset, SatGrdDatasetTest
 from losses import infoNCELoss, cross_entropy_loss, orientation_loss
 from models import CVM_KITTI as CVM
 
+import time
+
 torch.manual_seed(17)
 np.random.seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -24,7 +26,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 parser = argparse.ArgumentParser()
 parser.add_argument('--training', choices=('True','False'), default='True')
 parser.add_argument('-l', '--learning_rate', type=float, help='learning rate', default=1e-4)
-parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=8)
+parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=1)
 parser.add_argument('--weight_ori', type=float, help='weight on orientation loss', default=1e1)
 parser.add_argument('--weight_infoNCE', type=float, help='weight on infoNCE loss', default=1e4)
 parser.add_argument('--shift_range_lat', type=float, help='range for random shift in lateral direction', default=20)
@@ -49,10 +51,15 @@ GrdOriImg_H = 375
 GrdOriImg_W = 1242
 num_thread_workers = 1
 
-train_file = '/scratch/zxia/experiments/HighlyAccurate/dataLoader/train_files.txt'
-test1_file = '/scratch/zxia/experiments/HighlyAccurate/dataLoader/test1_files.txt'
-test2_file = '/scratch/zxia/experiments/HighlyAccurate/dataLoader/test2_files.txt'
-dataset_root = '/scratch/zxia/datasets/KITTI' 
+# train_file = '/scratch/zxia/experiments/HighlyAccurate/dataLoader/train_files.txt'
+# test1_file = '/scratch/zxia/experiments/HighlyAccurate/dataLoader/test1_files.txt'
+# test2_file = '/scratch/zxia/experiments/HighlyAccurate/dataLoader/test2_files.txt'
+# dataset_root = '/scratch/zxia/datasets/KITTI'
+
+train_file = '/ws/external/dataLoader/train_files.txt'
+test1_file = '/ws/external/dataLoader/test1_files.txt'
+test2_file = '/ws/external/dataLoader/test2_files.txt'
+dataset_root = '/ws/data/kitti-vo'
 
 
 SatMap_original_sidelength = 512 
@@ -279,8 +286,8 @@ if training:
     print('Finished Training')
 
 else:
-    test_model_path = 'models/KITTI/no_orientation_prior/model.pt'
-    
+    test_model_path = '/ws/external/checkpoints/models/KITTI/no_orientation_prior/model.pt'
+
     print('load model from: ' + test_model_path)
     CVM_model.load_state_dict(torch.load(test_model_path))
     CVM_model.to(device)
@@ -293,8 +300,11 @@ else:
     lateral_error_in_meters = []
     orientation_error = []
     angle_diff_list = []
+
+    start_time = time.time()
     for i, data in enumerate(test1_loader, 0):
-        print(i)
+        if i % 1000 == 0:
+            print(i)
         sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = data
         grd = grd.to(device)
         sat = sat.to(device)
@@ -341,9 +351,14 @@ else:
                 else: 
                     angle_gt = math.degrees(a_acos_gt)
                 orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))     
-                
+
+    # check inference time
+    end_time = time.time()
+    duration = (end_time - start_time)/len(test1_loader)
+
     print('---------------------------------------')   
     print('Test 1 set')
+    print('Inference time: ', duration)
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))
     
@@ -365,8 +380,11 @@ else:
     lateral_error_in_meters = []
     orientation_error = []
     angle_diff_list = []
+
+    start_time = time.time()
     for i, data in enumerate(test2_loader, 0):
-        print(i)
+        if i % 1000 == 0:
+            print(i)
         sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = data
         grd = grd.to(device)
         sat = sat.to(device)
@@ -413,9 +431,15 @@ else:
                 else: 
                     angle_gt = math.degrees(a_acos_gt)
                 orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))     
-                
+
+    # check inference time
+    end_time = time.time()
+    duration = (end_time - start_time)/len(test2_loader)
+
+
     print('---------------------------------------')   
     print('Test 2 set')
+    print('Inference time: ', duration)
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))
     
