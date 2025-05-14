@@ -183,7 +183,7 @@ if training:
         print("Evaluation on validation set")
         wandb_features = dict()
         model_dir = f'/ws/external/checkpoints/models/VIGOR/{area}/{args["save"]}/' + str(epoch) + '/'
-        results_dir = f'/ws/LTdata/jay/360_CVGL/CCVPE/checkpoints/results/VIGOR/{area}/{args["save"]}/' + str(epoch) + '/'
+        results_dir = f'/ws/LTdata/CCVPE/checkpoints/results/VIGOR/{area}/{args["save"]}/' + str(epoch) + '/'
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         if not os.path.exists(results_dir):
