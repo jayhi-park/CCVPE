@@ -14,9 +14,12 @@ import numpy as np
 import math
 from datasets import VIGORDataset
 from losses import infoNCELoss, cross_entropy_loss, orientation_loss
-from models import CVM_VIGOR as CVM
+from models import CVM_VIGOR as CVM_EFFI
+from models import CVM_VIGOR_VGG as CVM_VGG
 from models import CVM_VIGOR_ori_prior as CVM_with_ori_prior
 import time
+from tqdm import tqdm
+from utils.wandb_logger import WandbLogger
 
 torch.manual_seed(17)
 np.random.seed(0)
@@ -33,6 +36,10 @@ parser.add_argument('--weight_ori', type=float, help='weight on orientation loss
 parser.add_argument('--weight_infoNCE', type=float, help='weight on infoNCE loss', default=1e4)
 parser.add_argument('-f', '--FoV', type=int, help='field of view', default=360)
 parser.add_argument('--ori_noise', type=float, help='noise in orientation prior, 180 means unknown orientation', default=180.)
+parser.add_argument('--backbone', type=str, default='efficientnet')
+parser.add_argument('--wandb', '-wb', action='store_true', help='Turn on wandb log')
+parser.add_argument('--save', type=str)
+
 dataset_root='/ws/data/VIGOR'
 
 args = vars(parser.parse_args())
@@ -78,6 +85,8 @@ if training is False and ori_noise==180: # load pre-defined random orientation f
     elif area == 'crossarea':
         with open('crossarea_orientation_test.npy', 'rb') as f:
             random_orientation = np.load(f)
+else:
+    random_orientation = None
 
 vigor = VIGORDataset(dataset_root, split=area, train=training, pos_only=pos_only, transform=(transform_grd, transform_sat), ori_noise=ori_noise, random_orientation=random_orientation)
 if training is True:
@@ -95,8 +104,19 @@ else:
 
 
 if training:
+    if args['wandb']:
+        wandb_config = dict(project="360_cvgl", entity='jayhi-park', name=args['save'])
+        wandb_logger = WandbLogger(wandb_config, args)
+    else:
+        wandb_logger = WandbLogger(None)
+    wandb_logger.before_run()
+    wandb_features = dict()
+
     torch.cuda.empty_cache()
-    CVM_model = CVM(device, circular_padding)
+    if args['backbone'] == 'efficientnet':
+        CVM_model = CVM_EFFI(device, circular_padding)
+    elif args['backbone'] == 'vgg':
+        CVM_model = CVM_VGG(device, circular_padding)
     CVM_model.to(device)
     for param in CVM_model.parameters():
         param.requires_grad = True
@@ -110,7 +130,7 @@ if training:
     for epoch in range(15):  # loop over the dataset multiple times
         running_loss = 0.0
         CVM_model.train()
-        for i, data in enumerate(train_dataloader, 0):
+        for i, data in enumerate(tqdm(train_dataloader), 0):
             grd, sat, gt, gt_with_ori, gt_orientation, city, _ = data
             grd = grd.to(device)
             sat = sat.to(device)
@@ -142,24 +162,32 @@ if training:
             loss_infoNCE4 = infoNCELoss(torch.flatten(matching_score_stacked4, start_dim=1), torch.flatten(gt_bottleneck4, start_dim=1))
             loss_infoNCE5 = infoNCELoss(torch.flatten(matching_score_stacked5, start_dim=1), torch.flatten(gt_bottleneck5, start_dim=1))
             loss_infoNCE6 = infoNCELoss(torch.flatten(matching_score_stacked6, start_dim=1), torch.flatten(gt_bottleneck6, start_dim=1))
-            loss_ce =  cross_entropy_loss(logits_flattened, gt_flattened)
+            loss_ce = cross_entropy_loss(logits_flattened, gt_flattened)
 
             loss = loss_ce + weight_infoNCE*(loss_infoNCE+loss_infoNCE2+loss_infoNCE3+loss_infoNCE4+loss_infoNCE5+loss_infoNCE6)/6 + weight_ori*loss_ori
 
-           
             loss.backward()
             optimizer.step()
 
             global_step += 1
             # print statistics
             running_loss += loss.item()
-            if i % 200 == 199:    # print every 200 mini-batches
+            if i % 200 == 0:    # print every 200 mini-batches
                 print(f'[{epoch}, {i + 1:5d}] loss: {running_loss / 200:.3f}')
                 running_loss = 0.0
 
-        model_dir = 'models/VIGOR/'+label+'/' + str(epoch) + '/'
+                # log wandb features
+                wandb_features['train/loss'] = np.round(loss.item(), decimals=4)
+                wandb_logger.log_evaluate(wandb_features)
+
+        print("Evaluation on validation set")
+        wandb_features = dict()
+        model_dir = f'/ws/external/checkpoints/models/VIGOR/{area}/{args["save"]}/' + str(epoch) + '/'
+        results_dir = f'/ws/LTdata/jay/360_CVGL/CCVPE/checkpoints/results/VIGOR/{area}/{args["save"]}/' + str(epoch) + '/'
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
+        if not os.path.exists(results_dir):
+            os.makedirs(results_dir)
         torch.save(CVM_model.cpu().state_dict(), model_dir+'model.pt') # saving model
         CVM_model.cuda() # moving model to GPU for further training
         CVM_model.eval()
@@ -167,7 +195,7 @@ if training:
         # validation
         distance = []
         orientation_error = []
-        for i, data in enumerate(val_dataloader, 0):
+        for i, data in enumerate(tqdm(val_dataloader), 0):
             grd, sat, gt, gt_with_ori, gt_orientation, city, _ = data
             grd = grd.to(device)
             sat = sat.to(device)
@@ -215,32 +243,38 @@ if training:
                         angle_gt = math.degrees(-a_acos_gt) % 360
                     else: 
                         angle_gt = math.degrees(a_acos_gt)
-                    orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))      
+                    orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))
 
         mean_distance_error = np.mean(distance)
         print('epoch: ', epoch, 'FoV'+str(FoV)+ '_mean distance error on validation set: ', mean_distance_error)
-        file = 'results/'+label+'_mean_distance_error.txt'
+        file = results_dir+label+'_mean_distance_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [mean_distance_error], fmt='%4f', header='FoV'+str(FoV)+ '_validation_set_mean_distance_error_in_meters:', comments=str(epoch)+'_')
 
         median_distance_error = np.median(distance)
         print('epoch: ', epoch, 'FoV'+str(FoV)+ '_median distance error on validation set: ', median_distance_error)
-        file = 'results/'+label+'_median_distance_error.txt'
+        file = results_dir+label+'_median_distance_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [median_distance_error], fmt='%4f', header='FoV'+str(FoV)+ '_validation_set_median_distance_error_in_meters:', comments=str(epoch)+'_')
 
         mean_orientation_error = np.mean(orientation_error)
         print('epoch: ', epoch, 'FoV'+str(FoV)+ '_mean orientation error on validation set: ', mean_orientation_error)
-        file = 'results/'+label+'_mean_orientation_error.txt'
+        file = results_dir+label+'_mean_orientation_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [mean_orientation_error], fmt='%4f', header='FoV'+str(FoV)+ '_validation_set_mean_orientatione_error:', comments=str(epoch)+'_')
 
         median_orientation_error = np.median(orientation_error)
         print('epoch: ', epoch, 'FoV'+str(FoV)+ '_median orientation error on validation set: ', median_orientation_error)
-        file = 'results/'+label+'_median_orientation_error.txt'
+        file = results_dir+label+'_median_orientation_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [median_orientation_error], fmt='%4f', header='FoV'+str(FoV)+ '_validation_set_median_orientation_error:', comments=str(epoch)+'_')
 
+        # log wandb features
+        wandb_features[f'{area}/mean_dist'] = mean_distance_error
+        wandb_features[f'{area}/median_dist'] = median_distance_error
+        wandb_features[f'{area}/mean_ori'] = mean_orientation_error
+        wandb_features[f'{area}/median_ori'] = median_orientation_error
+        wandb_logger.log_evaluate(wandb_features)
 
     print('Finished Training')
 

@@ -302,10 +302,12 @@ else:
     angle_diff_list = []
 
     start_time = time.time()
+
+    results = {}
     for i, data in enumerate(test1_loader, 0):
         if i % 1000 == 0:
             print(i)
-        sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = data
+        sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle, file_name = data
         grd = grd.to(device)
         sat = sat.to(device)
 
@@ -319,7 +321,7 @@ else:
         for batch_idx in range(gt.shape[0]):
             orientation_from_north = orientation_angle[batch_idx] # degree
             current_gt = gt[batch_idx, :, :, :]
-            loc_gt = np.unravel_index(current_gt.argmax(), current_gt.shape)
+            loc_gt = np.unravel_index(current_gt.argmax(), current_gt.shape) # [1, x, y]
             current_pred = heatmap[batch_idx, :, :, :]
             loc_pred = np.unravel_index(current_pred.argmax(), current_pred.shape)
             pixel_distance = np.sqrt((loc_gt[1]-loc_pred[1])**2+(loc_gt[2]-loc_pred[2])**2)
@@ -336,7 +338,6 @@ else:
             longitudinal_error_in_meters.append(pixel_distance_longitudinal * test1_set.meter_per_pixel)
             lateral_error_in_meters.append(pixel_distance_lateral * test1_set.meter_per_pixel)
 
-
             cos_pred, sin_pred = ori[batch_idx, :, loc_pred[1], loc_pred[2]]
             if np.abs(cos_pred) <= 1 and np.abs(sin_pred) <=1:
                 a_acos_pred = math.acos(cos_pred)
@@ -350,7 +351,21 @@ else:
                     angle_gt = math.degrees(-a_acos_gt) % 360
                 else: 
                     angle_gt = math.degrees(a_acos_gt)
-                orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))     
+                orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))
+
+            results[file_name[batch_idx]] = {}
+            results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3] # [x, y]
+            results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3] # [x, y]
+            results[file_name[batch_idx]]['gt_ori'] = orientation_from_north - 90 # degree from east, clockwise
+            results[file_name[batch_idx]]['pred_ori'] = gt2pred_from_north - 90 # degree from east, clockwise
+
+            # results['y'].extend(loc_pred[2])
+            # results['theta'].extend(orientation_angle)
+
+    # save results
+    import pickle
+    with open('/ws/external/CCVPE_KITTI_360_results_test1.pkl', 'wb') as f:
+        pickle.dump(results, f)
 
     # check inference time
     end_time = time.time()
@@ -382,11 +397,13 @@ else:
     orientation_error = []
     angle_diff_list = []
 
+    results = {}
+
     start_time = time.time()
     for i, data in enumerate(test2_loader, 0):
         if i % 1000 == 0:
             print(i)
-        sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = data
+        sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle, file_name = data
         grd = grd.to(device)
         sat = sat.to(device)
 
@@ -431,12 +448,22 @@ else:
                     angle_gt = math.degrees(-a_acos_gt) % 360
                 else: 
                     angle_gt = math.degrees(a_acos_gt)
-                orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))     
+                orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))
+
+            results[file_name[batch_idx]] = {}
+            results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3]  # [x, y]
+            results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3]  # [x, y]
+            results[file_name[batch_idx]]['gt_ori'] = orientation_from_north - 90  # degree from east, clockwise
+            results[file_name[batch_idx]]['pred_ori'] = gt2pred_from_north - 90  # degree from east, clockwise
 
     # check inference time
     end_time = time.time()
     duration = (end_time - start_time)/len(test2_loader)
 
+    # save results
+    import pickle
+    with open('/ws/external/CCVPE_KITTI_360_results_test2.pkl', 'wb') as f:
+        pickle.dump(results, f)
 
     print('---------------------------------------')   
     print('Test 2 set')

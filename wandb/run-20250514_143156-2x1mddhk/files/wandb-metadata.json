@@ -1,0 +1,36 @@
+{
+    "os": "Linux-5.15.0-139-generic-x86_64-with-glibc2.29",
+    "python": "3.8.10",
+    "heartbeatAt": "2025-05-14T14:31:56.985356",
+    "startedAt": "2025-05-14T14:31:56.082201",
+    "docker": null,
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "gpu_count": 1,
+    "cpu_count": 24,
+    "cuda": null,
+    "args": [
+        "--training",
+        "True",
+        "--area",
+        "samearea",
+        "--ori_noise",
+        "180",
+        "--backbone",
+        "vgg",
+        "--wandb",
+        "--save",
+        "vgg"
+    ],
+    "state": "running",
+    "program": "/ws/external/train_VIGOR.py",
+    "codePath": "train_VIGOR.py",
+    "git": {
+        "remote": "https://github.com/jayhi-park/CCVPE.git",
+        "commit": "f3abe8bae7e2f8c50c9a218097f1952444c02085"
+    },
+    "email": null,
+    "root": "/ws/external",
+    "host": "153d54aedebc",
+    "username": "root",
+    "executable": "/usr/bin/python3"
+}

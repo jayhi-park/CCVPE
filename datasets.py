@@ -635,7 +635,7 @@ class SatGrdDatasetTest(Dataset):
         
         
         
-        return sat_map, grd_left_imgs[0], gt, gt_with_ori, orientation_map, orientation_angle
+        return sat_map, grd_left_imgs[0], gt, gt_with_ori, orientation_map, orientation_angle, file_name
 
     
     

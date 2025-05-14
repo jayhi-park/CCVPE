@@ -1,0 +1,47 @@
+
+Evaluation on validation set
+  0% 0/42087 [00:00<?, ?it/s]/usr/local/lib/python3.8/dist-packages/torch/nn/functional.py:749: UserWarning: Note that order of the arguments: ceil_mode and return_indices will changeto match the args list in nn.MaxPool2d in a future release.
+  warnings.warn("Note that order of the arguments: ceil_mode and return_indices will change"
+  0% 0/42087 [00:00<?, ?it/s]
+  0% 0/10522 [00:00<?, ?it/s]
+epoch:  0 FoV360_mean distance error on validation set:  18.981913500604332
+epoch:  0 FoV360_median distance error on validation set:  18.981913500604332
+epoch:  0 FoV360_mean orientation error on validation set:  64.14943169360589
+epoch:  0 FoV360_median orientation error on validation set:  64.14943169360589
+Evaluation on validation set
+epoch:  1 FoV360_mean distance error on validation set:  18.981913500604332
+epoch:  1 FoV360_median distance error on validation set:  18.981913500604332
+epoch:  1 FoV360_mean orientation error on validation set:  151.99180152509035
+epoch:  1 FoV360_median orientation error on validation set:  151.99180152509035
+Evaluation on validation set
+epoch:  2 FoV360_mean distance error on validation set:  18.981913500604332
+epoch:  2 FoV360_median distance error on validation set:  18.981913500604332
+epoch:  2 FoV360_mean orientation error on validation set:  113.89063759053376
+epoch:  2 FoV360_median orientation error on validation set:  113.89063759053376
+  0% 0/42087 [00:00<?, ?it/s]
+  0% 0/10522 [00:00<?, ?it/s]
+  0% 0/42087 [00:00<?, ?it/s]
+  0% 0/10522 [00:00<?, ?it/s]
+  0% 0/42087 [00:00<?, ?it/s]
+Evaluation on validation set
+epoch:  3 FoV360_mean distance error on validation set:  18.981913500604332
+epoch:  3 FoV360_median distance error on validation set:  18.981913500604332
+epoch:  3 FoV360_mean orientation error on validation set:  112.73959007947471
+epoch:  3 FoV360_median orientation error on validation set:  112.73959007947471
+Evaluation on validation set
+  0% 0/10522 [00:00<?, ?it/s]
+  0% 0/42087 [00:00<?, ?it/s]
+epoch:  4 FoV360_mean distance error on validation set:  18.981913500604332
+epoch:  4 FoV360_median distance error on validation set:  18.981913500604332
+epoch:  4 FoV360_mean orientation error on validation set:  52.089888074277184
+epoch:  4 FoV360_median orientation error on validation set:  52.089888074277184
+Evaluation on validation set
+epoch:  5 FoV360_mean distance error on validation set:  18.981913500604332
+epoch:  5 FoV360_median distance error on validation set:  18.981913500604332
+epoch:  5 FoV360_mean orientation error on validation set:  95.84427348042021
+epoch:  5 FoV360_median orientation error on validation set:  95.84427348042021
+Evaluation on validation set
+  0% 0/10522 [00:00<?, ?it/s]
+  0% 0/42087 [00:00<?, ?it/s]
+  0% 0/10522 [00:00<?, ?it/s]
+  0% 0/42087 [00:00<?, ?it/s]

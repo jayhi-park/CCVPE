@@ -1,0 +1,7 @@
+  0% 0/42087 [00:00<?, ?it/s]/usr/local/lib/python3.8/dist-packages/torch/nn/functional.py:749: UserWarning: Note that order of the arguments: ceil_mode and return_indices will changeto match the args list in nn.MaxPool2d in a future release.
+  warnings.warn("Note that order of the arguments: ceil_mode and return_indices will change"
+  0% 0/42087 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "/ws/external/train_VIGOR.py", line 180, in <module>
+    wandb_features['lr'] = args.lr
+AttributeError: 'dict' object has no attribute 'lr'
