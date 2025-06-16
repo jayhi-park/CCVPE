@@ -281,7 +281,7 @@ if training:
 else:
     torch.cuda.empty_cache()
     CVM_model = CVM_with_ori_prior(device, ori_noise, circular_padding)
-    test_model_path = '/ws/external/checkpoints/models/VIGOR/samearea/model.pt'
+    test_model_path = '/ws/external/checkpoints/models/VIGOR/crossarea/model.pt'
     print('load model from: ' + test_model_path)
 
     CVM_model.load_state_dict(torch.load(test_model_path))
@@ -298,10 +298,11 @@ else:
     probability_at_gt = []
 
     start_time = time.time()
+    results = {}
     for i, data in enumerate(test_dataloader, 0):
         if i % 1000 == 0:
             print(i)
-        grd, sat, gt, gt_with_ori, gt_orientation, city, orientation_angle = data
+        grd, sat, gt, gt_with_ori, gt_orientation, city, orientation_angle, file_name = data
         grd = grd.to(device)
         sat = sat.to(device)
         orientation_angle = orientation_angle.to(device)
@@ -361,6 +362,17 @@ else:
                     orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))     
 
                 probability_at_gt.append(heatmap[batch_idx, 0, loc_gt[1], loc_gt[2]])
+
+            results[file_name[batch_idx]] = {}
+            results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3] # [x, y]
+            results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3] # [x, y]
+            results[file_name[batch_idx]]['gt_ori'] = angle_gt # degree
+            results[file_name[batch_idx]]['pred_ori'] = angle_pred # degree
+
+    # save results
+    import pickle
+    with open('/ws/external/CCVPE_VIGOR_360_results_cross.pkl', 'wb') as f:
+        pickle.dump(results, f)
 
     # check inference time
     end_time = time.time()

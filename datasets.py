@@ -174,7 +174,7 @@ class VIGORDataset(Dataset):
         elif 'Chicago' in self.grd_list[idx]:
             city = 'Chicago'
             
-        return grd, sat, gt, gt_with_ori, orientation, city, orientation_angle
+        return grd, sat, gt, gt_with_ori, orientation, city, orientation_angle, self.grd_list[idx]
 
     
 # ---------------------------------------------------------------------------------
