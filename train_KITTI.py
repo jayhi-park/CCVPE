@@ -364,7 +364,7 @@ else:
 
     # save results
     import pickle
-    with open('/ws/external/CCVPE_KITTI_360_results_test1.pkl', 'wb') as f:
+    with open('/ws/external/ccvpe_results/CCVPE_KITTI_360_results_test1.pkl', 'wb') as f:
         pickle.dump(results, f)
 
     # check inference time
@@ -462,7 +462,7 @@ else:
 
     # save results
     import pickle
-    with open('/ws/external/CCVPE_KITTI_360_results_test2.pkl', 'wb') as f:
+    with open('/ws/external/ccvpe_results/CCVPE_KITTI_360_results_test2.pkl', 'wb') as f:
         pickle.dump(results, f)
 
     print('---------------------------------------')   
