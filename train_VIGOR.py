@@ -98,9 +98,9 @@ if training is True:
     training_set = Subset(vigor, train_indices)
     val_set = Subset(vigor, val_indices)
     train_dataloader = DataLoader(training_set, batch_size=batch_size, shuffle=True)
-    val_dataloader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
+    val_dataloader = DataLoader(val_set, batch_size=4, shuffle=False)
 else:
-    test_dataloader = DataLoader(vigor, batch_size=batch_size, shuffle=False)
+    test_dataloader = DataLoader(vigor, batch_size=4, shuffle=False)
 
 
 if training:
@@ -131,7 +131,7 @@ if training:
         running_loss = 0.0
         CVM_model.train()
         for i, data in enumerate(tqdm(train_dataloader), 0):
-            grd, sat, gt, gt_with_ori, gt_orientation, city, _ = data
+            grd, sat, gt, gt_with_ori, gt_orientation, city, _, file_name = data
             grd = grd.to(device)
             sat = sat.to(device)
             gt = gt.to(device)
@@ -182,7 +182,7 @@ if training:
 
         print("Evaluation on validation set")
         wandb_features = dict()
-        model_dir = f'/ws/external/checkpoints/models/VIGOR/{area}/{args["save"]}/' + str(epoch) + '/'
+        model_dir = f'/ws/LTdata/CCVPE/checkpoints/models/VIGOR/{area}/{args["save"]}/' + str(epoch) + '/'
         results_dir = f'/ws/LTdata/CCVPE/checkpoints/results/VIGOR/{area}/{args["save"]}/' + str(epoch) + '/'
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
@@ -196,7 +196,7 @@ if training:
         distance = []
         orientation_error = []
         for i, data in enumerate(tqdm(val_dataloader), 0):
-            grd, sat, gt, gt_with_ori, gt_orientation, city, _ = data
+            grd, sat, gt, gt_with_ori, gt_orientation, city, _, file_name = data
             grd = grd.to(device)
             sat = sat.to(device)
             gt = gt.to(device)
@@ -281,7 +281,7 @@ if training:
 else:
     torch.cuda.empty_cache()
     CVM_model = CVM_with_ori_prior(device, ori_noise, circular_padding)
-    test_model_path = '/ws/external/checkpoints/models/VIGOR/crossarea/model.pt'
+    test_model_path = '/ws/LTdata/CCVPE/checkpoints/models/VIGOR/crossarea/model.pt'
     print('load model from: ' + test_model_path)
 
     CVM_model.load_state_dict(torch.load(test_model_path))
@@ -298,7 +298,7 @@ else:
     probability_at_gt = []
 
     start_time = time.time()
-    results = {}
+    # results = {}
     for i, data in enumerate(test_dataloader, 0):
         if i % 1000 == 0:
             print(i)
@@ -362,17 +362,19 @@ else:
                     orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))     
 
                 probability_at_gt.append(heatmap[batch_idx, 0, loc_gt[1], loc_gt[2]])
-
-            results[file_name[batch_idx]] = {}
-            results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3] # [x, y]
-            results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3] # [x, y]
-            results[file_name[batch_idx]]['gt_ori'] = angle_gt # degree
-            results[file_name[batch_idx]]['pred_ori'] = angle_pred # degree
+            #
+            # results[file_name[batch_idx]] = {}
+            # results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3] # [x, y]
+            # results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3] # [x, y]
+            # results[file_name[batch_idx]]['gt_ori'] = angle_gt # degree
+            # results[file_name[batch_idx]]['pred_ori'] = angle_pred # degree
 
     # save results
-    import pickle
-    with open('/ws/external/CCVPE_VIGOR_360_results_cross.pkl', 'wb') as f:
-        pickle.dump(results, f)
+    # import pickle
+    # save_path = '/ws/external/ccvpe_results2'
+    # os.makedirs(save_path, exist_ok=True)
+    # with open(os.path.join(save_path, 'CCVPE_VIGOR_360_results_cross.pkl'), 'wb') as f:
+    #     pickle.dump(results, f)
 
     # check inference time
     end_time = time.time()

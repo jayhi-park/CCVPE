@@ -501,7 +501,7 @@ class SatGrdDataset(Dataset):
         orientation_map[1,:,:] = np.sin(orientation_angle * np.pi/180)
         
         
-        return sat_map, grd_left_imgs[0], gt, gt_with_ori, orientation_map, orientation_angle
+        return sat_map, grd_left_imgs[0], gt, gt_with_ori, orientation_map, orientation_angle, file_name
                
 class SatGrdDatasetTest(Dataset):
     def __init__(self, root, file,
@@ -722,6 +722,11 @@ class SatGrdDatasetDemo(Dataset):
         gt_shift_y = 0
         theta = heading / np.pi
         gt_ori = theta * self.rotation_range  # degree
+
+        sat_map = sat_map.transform(sat_map.size, PIL.Image.AFFINE,
+                                          (1, 0, CameraGPS_shift_left[0] / self.meter_per_pixel,
+                                           0, 1, CameraGPS_shift_left[1] / self.meter_per_pixel),
+                                          resample=PIL.Image.BILINEAR)
 
         sat_map = TF.center_crop(sat_map, SatMap_process_sidelength)
 

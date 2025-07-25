@@ -1,6 +1,6 @@
 import os
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DEVICES'] = "5"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 os.environ["MKL_NUM_THREADS"] = "4" 
 os.environ["NUMEXPR_NUM_THREADS"] = "4" 
 os.environ["OMP_NUM_THREADS"] = "4" 
@@ -21,7 +21,7 @@ import time
 torch.manual_seed(17)
 np.random.seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-"The device is: {}".format(device)
+print("The device is: {}".format(device))
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-l', '--learning_rate', type=float, help='learning rate', default=1e-4)
@@ -156,15 +156,17 @@ for i, data in enumerate(demo_loader, 0):
         results[file_name[batch_idx]] = {}
         results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3] # [x, y]
         results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3] # [x, y]
-        results[file_name[batch_idx]]['gt_ori'] = orientation_from_north - 90 # degree from east, clockwise
-        results[file_name[batch_idx]]['pred_ori'] = gt2pred_from_north - 90 # degree from east, clockwise
+        results[file_name[batch_idx]]['gt_ori'] = angle_gt - 90 # degree from east, clockwise
+        results[file_name[batch_idx]]['pred_ori'] = angle_pred - 90 # degree from east, clockwise
 
         # results['y'].extend(loc_pred[2])
         # results['theta'].extend(orientation_angle)
 
 # save results
 import pickle
-with open(f'/ws/external/ccvpe_results/CCVPE_KITTI_360_results_demo_{data_date}.pkl', 'wb') as f:
+save_path = '/ws/external/ccvpe_results2'
+os.makedirs(save_path, exist_ok=True)
+with open(os.path.join(save_path, f'CCVPE_KITTI_360_results_demo_{data_date}.pkl'), 'wb') as f:
     pickle.dump(results, f)
 
 # check inference time

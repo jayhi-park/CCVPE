@@ -1,9 +1,9 @@
 import os
-os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DEVICES'] = "5"
-os.environ["MKL_NUM_THREADS"] = "4" 
-os.environ["NUMEXPR_NUM_THREADS"] = "4" 
-os.environ["OMP_NUM_THREADS"] = "4" 
+# os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+# os.environ['CUDA_VISIBLE_DEVICES'] = "2"
+# os.environ["MKL_NUM_THREADS"] = "4"
+# os.environ["NUMEXPR_NUM_THREADS"] = "4"
+# os.environ["OMP_NUM_THREADS"] = "4"
 
 import argparse
 from torch.utils.data import DataLoader, Subset
@@ -15,8 +15,9 @@ import math
 from datasets import SatGrdDataset, SatGrdDatasetTest
 from losses import infoNCELoss, cross_entropy_loss, orientation_loss
 from models import CVM_KITTI as CVM
-
 import time
+from tqdm import tqdm
+from utils.wandb_logger import WandbLogger
 
 torch.manual_seed(17)
 np.random.seed(0)
@@ -32,6 +33,9 @@ parser.add_argument('--weight_infoNCE', type=float, help='weight on infoNCE loss
 parser.add_argument('--shift_range_lat', type=float, help='range for random shift in lateral direction', default=20)
 parser.add_argument('--shift_range_lon', type=float, help='range for random shift in longitudinal direction', default=20)
 parser.add_argument('--rotation_range', type=float, help='range for random orientation', default=180)
+parser.add_argument('--epochs', type=int, default=6)
+parser.add_argument('--wandb', '-wb', action='store_true', help='Turn on wandb log')
+parser.add_argument('--save', type=str)
 
 args = vars(parser.parse_args())
 learning_rate = args['learning_rate']
@@ -100,10 +104,10 @@ test2_set = SatGrdDatasetTest(root=dataset_root, file=test2_file,
 train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, pin_memory=True,
                               num_workers=num_thread_workers, drop_last=False)
 
-test1_loader = DataLoader(test1_set, batch_size=batch_size, shuffle=False, pin_memory=True,
+test1_loader = DataLoader(test1_set, batch_size=4, shuffle=False, pin_memory=True,
                             num_workers=num_thread_workers, drop_last=False)
 
-test2_loader = DataLoader(test2_set, batch_size=batch_size, shuffle=False, pin_memory=True,
+test2_loader = DataLoader(test2_set, batch_size=4, shuffle=False, pin_memory=True,
                               num_workers=num_thread_workers, drop_last=False)
 
 
@@ -111,6 +115,14 @@ test2_loader = DataLoader(test2_set, batch_size=batch_size, shuffle=False, pin_m
 torch.cuda.empty_cache()
 CVM_model = CVM(device)
 if training:
+    if args['wandb']:
+        wandb_config = dict(project="360_cvgl", entity='jayhi-park', name=args['save'])
+        wandb_logger = WandbLogger(wandb_config, args)
+    else:
+        wandb_logger = WandbLogger(None)
+    wandb_logger.before_run()
+    wandb_features = dict()
+
     CVM_model.to(device)
     for param in CVM_model.parameters():
         param.requires_grad = True
@@ -121,11 +133,11 @@ if training:
     global_step = 0
     # with torch.autograd.set_detect_anomaly(True):
 
-    for epoch in range(6):  # loop over the dataset multiple times
+    for epoch in tqdm(range(args['epochs'])):  # loop over the dataset multiple times
         running_loss = 0.0
         CVM_model.train()
         for i, data in enumerate(train_loader, 0):
-            sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = [item.to(device) for item in data]
+            sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = [item.to(device) for item in data[:-1]]
 
             gt_flattened = torch.flatten(gt, start_dim=1)
             gt_flattened = gt_flattened / torch.sum(gt_flattened, dim=1, keepdim=True)
@@ -161,21 +173,36 @@ if training:
             # print statistics
             running_loss += loss.item()
 
-            if i % 200 == 199:    # print every 200 mini-batches
+            if i % 200 == 0:    # print every 200 mini-batches
                 print(f'[{epoch}, {i + 1:5d}] loss: {running_loss / 200:.3f}')
                 running_loss = 0.0
 
-        model_dir = 'models/KITTI/'+label+'/' + str(epoch) + '/'
+                # log wandb features
+                wandb_features['train/loss'] = np.round(loss.item(), decimals=4)
+                wandb_logger.log_evaluate(wandb_features)
+
+        print("Evaluation on validation set")
+        wandb_features = dict()
+        # model_dir = f'/ws/external/checkpoints/models/KITTI/{args["save"]}/' + str(epoch) + '/'
+        model_dir = f'/ws/LTdata/CCVPE/checkpoints/models/KITTI/{args["save"]}/' + str(epoch) + '/'
+        results_dir = f'/ws/LTdata/CCVPE/checkpoints/results/KITTI/{args["save"]}/' + str(epoch) + '/'
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
+        if not os.path.exists(results_dir):
+            os.makedirs(results_dir)
+
+        # model_dir = 'models/KITTI/'+label+'/' + str(epoch) + '/'
+        # if not os.path.exists(model_dir):
+        #     os.makedirs(model_dir)
         torch.save(CVM_model.cpu().state_dict(), model_dir+'model.pt') # saving model
         CVM_model.cuda() # moving model to GPU for further training
         CVM_model.eval()
 
+        # validation
         distance_in_meters = []
         orientation_error = []
         for i, data in enumerate(test1_loader, 0):
-            sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = [item.to(device) for item in data]
+            sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = [item.to(device) for item in data[:-1]]
             logits_flattened, heatmap, ori, matching_score_stacked, matching_score_stacked2, matching_score_stacked3, matching_score_stacked4, matching_score_stacked5, matching_score_stacked6 = CVM_model(grd, sat)
             gt = gt.cpu().detach().numpy() 
             gt_orientation = gt_orientation.cpu().detach().numpy() 
@@ -201,37 +228,43 @@ if training:
                         angle_gt = math.degrees(-a_acos_gt) % 360
                     else: 
                         angle_gt = math.degrees(a_acos_gt)
-                    orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))      
+                    orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))
 
         mean_distance_error = np.mean(distance_in_meters)
         print('epoch: ', epoch, 'mean distance error (m) on test1 set: ', mean_distance_error)
-        file = 'results/'+label+'_test1_mean_distance_error.txt'
+        file = results_dir+label+'_test1_mean_distance_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [mean_distance_error], fmt='%4f', header='test1_set_mean_distance_error_in_pixels:', comments=str(epoch)+'_')
 
         median_distance_error = np.median(distance_in_meters)
         print('epoch: ', epoch, 'median distance error (m) on test1 set: ', median_distance_error)
-        file = 'results/'+label+'_test1_median_distance_error.txt'
+        file = results_dir+label+'_test1_median_distance_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [median_distance_error], fmt='%4f', header='test1_set_median_distance_error_in_pixels:', comments=str(epoch)+'_')
 
         mean_orientation_error = np.mean(orientation_error)
         print('epoch: ', epoch, 'mean orientation error (degrees) on test1 set: ', mean_orientation_error)
-        file = 'results/'+label+'_test1_mean_orientation_error.txt'
+        file = results_dir+label+'_test1_mean_orientation_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [mean_orientation_error], fmt='%2f', header='test1_set_mean_orientation_error:', comments=str(epoch)+'_')
 
         median_orientation_error = np.median(orientation_error)
         print('epoch: ', epoch, 'median orientation error (degrees) on test1 set: ', median_orientation_error)
-        file = 'results/'+label+'_test1_median_orientation_error.txt'
+        file = results_dir+label+'_test1_median_orientation_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [median_orientation_error], fmt='%2f', header='test1_set_median_orientation_error:', comments=str(epoch)+'_')
 
+        # log wandb features
+        wandb_features[f'test1/mean_dist'] = mean_distance_error
+        wandb_features[f'test1/median_dist'] = median_distance_error
+        wandb_features[f'test1/mean_ori'] = mean_orientation_error
+        wandb_features[f'test1/median_ori'] = median_orientation_error
+        wandb_logger.log_evaluate(wandb_features)
 
         distance_in_meters = []
         orientation_error = []
         for i, data in enumerate(test2_loader, 0):
-            sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = [item.to(device) for item in data]
+            sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = [item.to(device) for item in data[:-1]]
             logits_flattened, heatmap, ori, matching_score_stacked, matching_score_stacked2, matching_score_stacked3, matching_score_stacked4, matching_score_stacked5, matching_score_stacked6 = CVM_model(grd, sat)
             gt = gt.cpu().detach().numpy() 
             gt_orientation = gt_orientation.cpu().detach().numpy() 
@@ -257,36 +290,44 @@ if training:
                         angle_gt = math.degrees(-a_acos_gt) % 360
                     else: 
                         angle_gt = math.degrees(a_acos_gt)
-                    orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))      
+                    orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))
 
         mean_distance_error = np.mean(distance_in_meters)
         print('epoch: ', epoch, 'mean distance error (m) on test2 set: ', mean_distance_error)
-        file = 'results/'+label+'_test2_mean_distance_error.txt'
+        file = results_dir+label+'_test2_mean_distance_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [mean_distance_error], fmt='%4f', header='test2_set_mean_distance_error_in_pixels:', comments=str(epoch)+'_')
 
         median_distance_error = np.median(distance_in_meters)
         print('epoch: ', epoch, 'median distance error (m) on test2 set: ', median_distance_error)
-        file = 'results/'+label+'_test2_median_distance_error.txt'
+        file = results_dir+label+'_test2_median_distance_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [median_distance_error], fmt='%4f', header='test2_set_median_distance_error_in_pixels:', comments=str(epoch)+'_')
 
         mean_orientation_error = np.mean(orientation_error)
         print('epoch: ', epoch, 'mean orientation error (degrees) on test2 set: ', mean_orientation_error)
-        file = 'results/'+label+'_test2_mean_orientation_error.txt'
+        file = results_dir+label+'_test2_mean_orientation_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [mean_orientation_error], fmt='%2f', header='test2_set_mean_orientation_error:', comments=str(epoch)+'_')
 
         median_orientation_error = np.median(orientation_error)
         print('epoch: ', epoch, 'median orientation error (degrees) on test2 set: ', median_orientation_error)
-        file = 'results/'+label+'_test2_median_orientation_error.txt'
+        file = results_dir+label+'_test2_median_orientation_error.txt'
         with open(file,'ab') as f:
             np.savetxt(f, [median_orientation_error], fmt='%2f', header='test2_set_median_orientation_error:', comments=str(epoch)+'_')
+
+        # log wandb features
+        wandb_features[f'test2/mean_dist'] = mean_distance_error
+        wandb_features[f'test2/median_dist'] = median_distance_error
+        wandb_features[f'test2/mean_ori'] = mean_orientation_error
+        wandb_features[f'test2/median_ori'] = median_orientation_error
+        wandb_logger.log_evaluate(wandb_features)
 
     print('Finished Training')
 
 else:
-    test_model_path = '/ws/external/checkpoints/models/KITTI/no_orientation_prior/model.pt'
+    # test_model_path = '/ws/external/checkpoints/models/KITTI/no_orientation_prior/model.pt'
+    test_model_path = f'/ws/LTdata/CCVPE/checkpoints/models/KITTI/{args["save"]}/{args["epochs"]-1}/model.pt'
 
     print('load model from: ' + test_model_path)
     CVM_model.load_state_dict(torch.load(test_model_path))
@@ -303,7 +344,7 @@ else:
 
     start_time = time.time()
 
-    results = {}
+    # results = {}
     for i, data in enumerate(test1_loader, 0):
         if i % 1000 == 0:
             print(i)
@@ -353,19 +394,21 @@ else:
                     angle_gt = math.degrees(a_acos_gt)
                 orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))
 
-            results[file_name[batch_idx]] = {}
-            results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3] # [x, y]
-            results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3] # [x, y]
-            results[file_name[batch_idx]]['gt_ori'] = orientation_from_north - 90 # degree from east, clockwise
-            results[file_name[batch_idx]]['pred_ori'] = gt2pred_from_north - 90 # degree from east, clockwise
+            # results[file_name[batch_idx]] = {}
+            # results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3] # [x, y]
+            # results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3] # [x, y]
+            # results[file_name[batch_idx]]['gt_ori'] = angle_gt - 90 # degree from east, clockwise
+            # results[file_name[batch_idx]]['pred_ori'] = angle_pred - 90 # degree from east, clockwise
 
             # results['y'].extend(loc_pred[2])
             # results['theta'].extend(orientation_angle)
 
     # save results
-    import pickle
-    with open('/ws/external/ccvpe_results/CCVPE_KITTI_360_results_test1.pkl', 'wb') as f:
-        pickle.dump(results, f)
+    # import pickle
+    # save_path = '/ws/external/ccvpe_results2'
+    # os.makedirs(save_path, exist_ok=True)
+    # with open(os.path.join(save_path, 'CCVPE_KITTI_360_results_test1.pkl'), 'wb') as f:
+    #     pickle.dump(results, f)
 
     # check inference time
     end_time = time.time()
@@ -397,7 +440,7 @@ else:
     orientation_error = []
     angle_diff_list = []
 
-    results = {}
+    # results = {}
 
     start_time = time.time()
     for i, data in enumerate(test2_loader, 0):
@@ -450,20 +493,22 @@ else:
                     angle_gt = math.degrees(a_acos_gt)
                 orientation_error.append(np.min([np.abs(angle_gt-angle_pred), 360-np.abs(angle_gt-angle_pred)]))
 
-            results[file_name[batch_idx]] = {}
-            results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3]  # [x, y]
-            results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3]  # [x, y]
-            results[file_name[batch_idx]]['gt_ori'] = orientation_from_north - 90  # degree from east, clockwise
-            results[file_name[batch_idx]]['pred_ori'] = gt2pred_from_north - 90  # degree from east, clockwise
+            # results[file_name[batch_idx]] = {}
+            # results[file_name[batch_idx]]['gt_loc'] = loc_gt[1:3]  # [x, y]
+            # results[file_name[batch_idx]]['pred_loc'] = loc_pred[1:3]  # [x, y]
+            # results[file_name[batch_idx]]['gt_ori'] = angle_gt - 90  # degree from east, clockwise
+            # results[file_name[batch_idx]]['pred_ori'] = angle_pred - 90  # degree from east, clockwise
 
     # check inference time
     end_time = time.time()
     duration = (end_time - start_time)/len(test2_loader)
 
     # save results
-    import pickle
-    with open('/ws/external/ccvpe_results/CCVPE_KITTI_360_results_test2.pkl', 'wb') as f:
-        pickle.dump(results, f)
+    # import pickle
+    # save_path = '/ws/external/ccvpe_results2'
+    # os.makedirs(save_path, exist_ok=True)
+    # with open(os.path.join(save_path, 'CCVPE_KITTI_360_results_test2.pkl'), 'wb') as f:
+    #     pickle.dump(results, f)
 
     print('---------------------------------------')   
     print('Test 2 set')
