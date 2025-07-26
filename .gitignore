@@ -1,4 +1,3 @@
-dataLoader/
 checkpoints/
 __pycache__/
 efficientnet_pytorch/__pycache__/
