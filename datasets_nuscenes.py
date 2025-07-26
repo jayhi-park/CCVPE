@@ -147,8 +147,13 @@ class SatGrdDataset(Dataset):
         sat_align_cam = sat_rot
 
         # load the shifts
-        gt_shift_x = -float(gt_shift_x)  # --> right as positive, parallel to the heading direction
-        gt_shift_y = -float(gt_shift_y)  # --> up as positive, vertical to the heading direction
+        if self.split == 'train':
+            # randomly generate shift
+            gt_shift_x = np.random.uniform(-1, 1)  # --> right as positive, parallel to the heading direction
+            gt_shift_y = np.random.uniform(-1, 1)  # --> up as positive, vertical to the heading direction
+        else:
+            gt_shift_x = -float(gt_shift_x)  # --> right as positive, parallel to the heading direction
+            gt_shift_y = -float(gt_shift_y)  # --> up as positive, vertical to the heading direction
 
         sat_rand_shift = \
             sat_align_cam.transform(
@@ -156,8 +161,12 @@ class SatGrdDataset(Dataset):
                 (1, 0, gt_shift_x * self.shift_range_pixels_lon,
                  0, 1, -gt_shift_y * self.shift_range_pixels_lat),
                 resample=PIL.Image.BILINEAR)
-        
-        random_ori = float(theta) * self.rotation_range # degree
+
+        if self.split == 'train':
+            # randomly generate roation
+            random_ori = np.random.uniform(-1, 1) * self.rotation_range  # 0 means the arrow in aerial image heading Easting, counter-clockwise increasing
+        else:
+            random_ori = float(theta) * self.rotation_range # degree
         sat_rand_shift_rand_rot = sat_rand_shift.rotate(random_ori)
         
         sat_map =TF.center_crop(sat_rand_shift_rand_rot, SatMap_process_sidelength)
