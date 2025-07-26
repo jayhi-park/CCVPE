@@ -133,10 +133,10 @@ if training:
     global_step = 0
     # with torch.autograd.set_detect_anomaly(True):
 
-    for epoch in tqdm(range(args['epochs'])):  # loop over the dataset multiple times
+    for epoch in range(args['epochs']):  # loop over the dataset multiple times
         running_loss = 0.0
         CVM_model.train()
-        for i, data in enumerate(train_loader, 0):
+        for i, data in enumerate(tqdm(train_loader), 0):
             sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle = [item.to(device) for item in data[:-1]]
 
             gt_flattened = torch.flatten(gt, start_dim=1)
