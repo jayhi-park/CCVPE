@@ -278,7 +278,7 @@ class Conv2dStaticSamePadding(nn.Conv2d):
 
     def forward(self, x):
         x = self.static_padding(x)
-        x = F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        x = F.conv2d(x, self.weight, self.bias, self.stride[0], self.padding[0], self.dilation[0], self.groups)
         return x
 
 
@@ -354,7 +354,7 @@ class Conv2dStaticCircularPadding(nn.Conv2d):
 
     def forward(self, x):
         x = self.static_padding(x)
-        x = F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        x = F.conv2d(x, self.weight, self.bias, self.stride[0], self.padding[0], self.dilation[0], self.groups)
         return x
 
     

@@ -18,6 +18,7 @@ from models import CVM_KITTI as CVM
 import time
 from tqdm import tqdm
 from utils.wandb_logger import WandbLogger
+from utils.eval_gflops import eval_gflops_func
 
 torch.manual_seed(17)
 np.random.seed(0)
@@ -27,7 +28,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 parser = argparse.ArgumentParser()
 parser.add_argument('--training', choices=('True','False'), default='True')
 parser.add_argument('-l', '--learning_rate', type=float, help='learning rate', default=1e-4)
-parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=1)
+parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=8)
+parser.add_argument('-tb', '--test_batch_size', type=int, help='batch size', default=4)
 parser.add_argument('--weight_ori', type=float, help='weight on orientation loss', default=1e1)
 parser.add_argument('--weight_infoNCE', type=float, help='weight on infoNCE loss', default=1e4)
 parser.add_argument('--shift_range_lat', type=float, help='range for random shift in lateral direction', default=20)
@@ -36,16 +38,21 @@ parser.add_argument('--rotation_range', type=float, help='range for random orien
 parser.add_argument('--epochs', type=int, default=6)
 parser.add_argument('--wandb', '-wb', action='store_true', help='Turn on wandb log')
 parser.add_argument('--save', type=str)
+parser.add_argument('--trash_before_test', action='store_true', help='trash in test')
+parser.add_argument('--eval_gflops', action='store_true', help='evaluate gflops')
 
 args = vars(parser.parse_args())
 learning_rate = args['learning_rate']
 batch_size = args['batch_size']
+test_batch_size = args['test_batch_size']
 weight_ori = args['weight_ori']
 weight_infoNCE = args['weight_infoNCE']
 training = args['training'] == 'True'
 shift_range_lat = args['shift_range_lat']
 shift_range_lon = args['shift_range_lon']
 rotation_range = args['rotation_range']
+trash_before_test = args['trash_before_test']
+eval_gflops = args['eval_gflops']
 
 label = 'KITTI_rotation_range' + str(rotation_range)
 
@@ -53,7 +60,7 @@ GrdImg_H = 256  # 256 # original: 375 #224, 256
 GrdImg_W = 1024  # 1024 # original:1242 #1248, 1024
 GrdOriImg_H = 375
 GrdOriImg_W = 1242
-num_thread_workers = 1
+num_thread_workers = 4
 
 # train_file = '/scratch/zxia/experiments/HighlyAccurate/dataLoader/train_files.txt'
 # test1_file = '/scratch/zxia/experiments/HighlyAccurate/dataLoader/test1_files.txt'
@@ -104,10 +111,10 @@ test2_set = SatGrdDatasetTest(root=dataset_root, file=test2_file,
 train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, pin_memory=True,
                               num_workers=num_thread_workers, drop_last=False)
 
-test1_loader = DataLoader(test1_set, batch_size=4, shuffle=False, pin_memory=True,
+test1_loader = DataLoader(test1_set, batch_size=test_batch_size, shuffle=False, pin_memory=True,
                             num_workers=num_thread_workers, drop_last=False)
 
-test2_loader = DataLoader(test2_set, batch_size=4, shuffle=False, pin_memory=True,
+test2_loader = DataLoader(test2_set, batch_size=test_batch_size, shuffle=False, pin_memory=True,
                               num_workers=num_thread_workers, drop_last=False)
 
 
@@ -334,6 +341,12 @@ else:
     CVM_model.to(device)
     CVM_model.eval()
 
+    if eval_gflops:
+        data = next(iter(test1_loader))
+        sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle, file_name = data
+        input_data = [grd.to(device), sat.to(device)]
+        eval_gflops_func(CVM_model, None, input_data)
+        exit(1)
 
     distance = []
     distance_in_meters = []
@@ -342,8 +355,24 @@ else:
     orientation_error = []
     angle_diff_list = []
 
-    start_time = time.time()
+    if trash_before_test:
+        with torch.no_grad():
+            for i, data in enumerate(test1_loader, 0):
+                sat, grd, gt, gt_with_ori, gt_orientation, orientation_angle, file_name = data
+                grd = grd.to(device)
+                sat = sat.to(device)
 
+                logits_flattened, heatmap, ori, matching_score_stacked, matching_score_stacked2, matching_score_stacked3, matching_score_stacked4, matching_score_stacked5, matching_score_stacked6 = CVM_model(
+                    grd, sat)
+
+                if i == 10:
+                    print("Trashing before test")
+                    break
+
+    model_inference_time = 0
+
+    torch.cuda.synchronize()
+    start_time = time.time()
     # results = {}
     for i, data in enumerate(test1_loader, 0):
         if i % 1000 == 0:
@@ -352,9 +381,15 @@ else:
         grd = grd.to(device)
         sat = sat.to(device)
 
+        torch.cuda.synchronize()
+        model_inference_start_time = time.time()
+
         logits_flattened, heatmap, ori, matching_score_stacked, matching_score_stacked2, matching_score_stacked3, matching_score_stacked4, matching_score_stacked5, matching_score_stacked6 = CVM_model(grd, sat)
 
-        gt = gt.cpu().detach().numpy() 
+        torch.cuda.synchronize()
+        model_inference_time += (time.time() - model_inference_start_time)
+
+        gt = gt.cpu().detach().numpy()
         orientation_angle = orientation_angle.cpu().detach().numpy() 
         gt_orientation = gt_orientation.cpu().detach().numpy() 
         heatmap = heatmap.cpu().detach().numpy()
@@ -411,12 +446,16 @@ else:
     #     pickle.dump(results, f)
 
     # check inference time
+    torch.cuda.synchronize()
     end_time = time.time()
     duration = (end_time - start_time)/len(test1_loader)
+    model_inference_time /= len(test1_loader)
 
     print('---------------------------------------')   
     print('Test 1 set')
     print('Inference time: ', duration)
+    print('Time per image model inference (second): ' + model_inference_time)
+
     print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))
@@ -441,7 +480,9 @@ else:
     angle_diff_list = []
 
     # results = {}
+    model_inference_time = 0
 
+    torch.cuda.synchronize()
     start_time = time.time()
     for i, data in enumerate(test2_loader, 0):
         if i % 1000 == 0:
@@ -450,7 +491,13 @@ else:
         grd = grd.to(device)
         sat = sat.to(device)
 
+        torch.cuda.synchronize()
+        model_inference_start_time = time.time()
+
         logits_flattened, heatmap, ori, matching_score_stacked, matching_score_stacked2, matching_score_stacked3, matching_score_stacked4, matching_score_stacked5, matching_score_stacked6 = CVM_model(grd, sat)
+
+        torch.cuda.synchronize()
+        model_inference_time += (time.time() - model_inference_start_time)
 
         gt = gt.cpu().detach().numpy() 
         orientation_angle = orientation_angle.cpu().detach().numpy() 
@@ -500,8 +547,10 @@ else:
             # results[file_name[batch_idx]]['pred_ori'] = angle_pred - 90  # degree from east, clockwise
 
     # check inference time
+    torch.cuda.synchronize()
     end_time = time.time()
     duration = (end_time - start_time)/len(test2_loader)
+    model_inference_time /= len(test2_loader)
 
     # save results
     # import pickle
@@ -513,6 +562,8 @@ else:
     print('---------------------------------------')   
     print('Test 2 set')
     print('Inference time: ', duration)
+    print('Time per image model inference (second): ' + model_inference_time)
+
     print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))

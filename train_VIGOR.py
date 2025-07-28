@@ -20,6 +20,7 @@ from models import CVM_VIGOR_ori_prior as CVM_with_ori_prior
 import time
 from tqdm import tqdm
 from utils.wandb_logger import WandbLogger
+from utils.eval_gflops import eval_gflops_func
 
 torch.manual_seed(17)
 np.random.seed(0)
@@ -31,7 +32,8 @@ parser.add_argument('--area', type=str, help='samearea or crossarea', default='s
 parser.add_argument('--training', choices=('True','False'), default='True')
 parser.add_argument('--pos_only', choices=('True','False'), default='True')
 parser.add_argument('-l', '--learning_rate', type=float, help='learning rate', default=1e-4)
-parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=1)
+parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=8)
+parser.add_argument('-tb', '--test_batch_size', type=int, help='batch size', default=4)
 parser.add_argument('--weight_ori', type=float, help='weight on orientation loss', default=1e1)
 parser.add_argument('--weight_infoNCE', type=float, help='weight on infoNCE loss', default=1e4)
 parser.add_argument('-f', '--FoV', type=int, help='field of view', default=360)
@@ -39,6 +41,8 @@ parser.add_argument('--ori_noise', type=float, help='noise in orientation prior,
 parser.add_argument('--backbone', type=str, default='efficientnet')
 parser.add_argument('--wandb', '-wb', action='store_true', help='Turn on wandb log')
 parser.add_argument('--save', type=str)
+parser.add_argument('--trash_before_test', action='store_true', help='trash in test')
+parser.add_argument('--eval_gflops', action='store_true', help='evaluate gflops')
 
 dataset_root='/ws/data/VIGOR'
 
@@ -46,6 +50,7 @@ args = vars(parser.parse_args())
 area = args['area']
 learning_rate = args['learning_rate']
 batch_size = args['batch_size']
+test_batch_size = args['test_batch_size']
 weight_ori = args['weight_ori']
 weight_infoNCE = args['weight_infoNCE']
 training = args['training'] == 'True'
@@ -55,6 +60,8 @@ pos_only = args['pos_only']
 label = area + '_HFoV' + str(FoV)
 ori_noise = args['ori_noise']
 ori_noise = 18 * (ori_noise // 18) # round the closest multiple of 18 degrees within prior 
+trash_before_test = args['trash_before_test']
+eval_gflops = args['eval_gflops']
 
 
 if FoV == 360:
@@ -98,9 +105,9 @@ if training is True:
     training_set = Subset(vigor, train_indices)
     val_set = Subset(vigor, val_indices)
     train_dataloader = DataLoader(training_set, batch_size=batch_size, shuffle=True)
-    val_dataloader = DataLoader(val_set, batch_size=4, shuffle=False)
+    val_dataloader = DataLoader(val_set, batch_size=test_batch_size, shuffle=False)
 else:
-    test_dataloader = DataLoader(vigor, batch_size=4, shuffle=False)
+    test_dataloader = DataLoader(vigor, batch_size=test_batch_size, shuffle=False)
 
 
 if training:
@@ -288,6 +295,11 @@ else:
     CVM_model.to(device)
     CVM_model.eval()
 
+    if eval_gflops:
+        input_shape = [(1, 3, 256, 1024), (1, 3, 512, 512)]
+        eval_gflops_func(CVM_model, input_shape)
+        exit(1)
+
     distance = []
     distance_in_meters = []
     longitudinal_error_in_meters = []
@@ -297,6 +309,25 @@ else:
     probability = []
     probability_at_gt = []
 
+    if trash_before_test:
+        with torch.no_grad():
+            for i, data in enumerate(test_dataloader, 0):
+                grd, sat, gt, gt_with_ori, gt_orientation, city, orientation_angle, file_name = data
+                grd = grd.to(device)
+                sat = sat.to(device)
+                orientation_angle = orientation_angle.to(device)
+                gt_with_ori = gt_with_ori.to(device)
+
+                logits_flattened, heatmap, ori, matching_score_stacked, matching_score_stacked2, matching_score_stacked3, matching_score_stacked4, matching_score_stacked5, matching_score_stacked6 = CVM_model(
+                    grd, sat)
+
+                if i == 10:
+                    print("Trashing before test")
+                    break
+
+    model_inference_time = 0
+
+    torch.cuda.synchronize()
     start_time = time.time()
     # results = {}
     for i, data in enumerate(test_dataloader, 0):
@@ -317,7 +348,13 @@ else:
 
         gt_bottleneck = nn.MaxPool2d(64, stride=64)(gt_with_ori)
 
+        torch.cuda.synchronize()
+        model_inference_start_time = time.time()
+
         logits_flattened, heatmap, ori, matching_score_stacked, matching_score_stacked2, matching_score_stacked3, matching_score_stacked4, matching_score_stacked5, matching_score_stacked6 = CVM_model(grd_FoV, sat)
+
+        torch.cuda.synchronize()
+        model_inference_time += (time.time() - model_inference_start_time)
 
         gt = gt.cpu().detach().numpy() 
         gt_with_ori = gt_with_ori.cpu().detach().numpy() 
@@ -377,9 +414,14 @@ else:
     #     pickle.dump(results, f)
 
     # check inference time
+    torch.cuda.synchronize()
     end_time = time.time()
     duration = (end_time - start_time)/len(test_dataloader)
+    model_inference_time /= len(test_dataloader)
+
     print('Inference time: ', duration)
+    print('Time per image model inference (second): ' + model_inference_time)
+
     print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   
     print('median localization error (m): ', np.median(distance_in_meters))
