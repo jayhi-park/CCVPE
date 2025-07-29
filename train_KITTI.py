@@ -454,7 +454,7 @@ else:
     print('---------------------------------------')   
     print('Test 1 set')
     print('Inference time: ', duration)
-    print('Time per image model inference (second): ' + model_inference_time)
+    print('Time per image model inference (second): ', model_inference_time)
 
     print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   
@@ -562,7 +562,7 @@ else:
     print('---------------------------------------')   
     print('Test 2 set')
     print('Inference time: ', duration)
-    print('Time per image model inference (second): ' + model_inference_time)
+    print('Time per image model inference (second): ', model_inference_time)
 
     print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   

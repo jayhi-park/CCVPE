@@ -296,8 +296,10 @@ else:
     CVM_model.eval()
 
     if eval_gflops:
-        input_shape = [(1, 3, 256, 1024), (1, 3, 512, 512)]
-        eval_gflops_func(CVM_model, input_shape)
+        data = next(iter(test_dataloader))
+        grd, sat, gt, gt_with_ori, gt_orientation, city, orientation_angle, file_name = data
+        input_data = [grd.to(device), sat.to(device)]
+        eval_gflops_func(CVM_model, None, input_data)
         exit(1)
 
     distance = []
@@ -420,7 +422,7 @@ else:
     model_inference_time /= len(test_dataloader)
 
     print('Inference time: ', duration)
-    print('Time per image model inference (second): ' + model_inference_time)
+    print('Time per image model inference (second): ', model_inference_time)
 
     print(f'FPS: {1 / duration}')
     print('mean localization error (m): ', np.mean(distance_in_meters))   
